@@ -56,9 +56,9 @@ let stateMachine = StateMachine<TrafficLightTransition>(initialState: .red)
 /// Helper function to process state transitions and print their effects
 @MainActor func processTransition(to newState: TrafficLightState) {
     let transition = TrafficLightTransition(state: newState, effect: .printTransition(""))
-    let effects = stateMachine.process(transition)
+    let effects = try? stateMachine.process(transition)
     
-    for effect in effects {
+    for effect in effects ?? [] {
         if case .printTransition(let message) = effect {
             print(message)
         }
