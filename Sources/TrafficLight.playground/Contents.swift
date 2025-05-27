@@ -7,12 +7,29 @@ import StateMachine
 /// - Implement valid state transitions
 /// - Process transitions and handle their effects
 /// - Handle invalid transitions gracefully
+/// - Visualize the state machine
 
 /// Represents the possible states of a traffic light
-enum TrafficLightState {
+enum TrafficLightState: StateMachineVisualizable {
     case red
     case yellow
     case green
+    
+    var visualName: String {
+        switch self {
+        case .red: return "Red Light"
+        case .yellow: return "Yellow Light"
+        case .green: return "Green Light"
+        }
+    }
+    
+    var visualColor: String? {
+        switch self {
+        case .red: return "#FF0000"
+        case .yellow: return "#FFFF00"
+        case .green: return "#00FF00"
+        }
+    }
 }
 
 /// Represents the effects that can occur during traffic light transitions
@@ -21,12 +38,28 @@ enum TrafficLightEffect {
 }
 
 /// Implements the traffic light state machine using the TransitionType protocol
-struct TrafficLightTransition: TransitionType {
+struct TrafficLightTransition: TransitionType, TransitionVisualizable {
     typealias State = TrafficLightState
     typealias Effect = TrafficLightEffect
     
     let state: TrafficLightState
     let effect: TrafficLightEffect
+    
+    var visualName: String {
+        switch state {
+        case .red: return "Stop → Go"
+        case .yellow: return "Caution"
+        case .green: return "Go → Stop"
+        }
+    }
+    
+    var visualColor: String? {
+        switch state {
+        case .red: return "#FF0000"
+        case .yellow: return "#FFFF00"
+        case .green: return "#00FF00"
+        }
+    }
     
     /// Processes the transition and returns a message describing the state change
     func process(from currentState: TrafficLightState) -> [TrafficLightEffect] {
@@ -51,7 +84,10 @@ struct TrafficLightTransition: TransitionType {
 }
 
 // Create an instance of the state machine starting with a red light
-let stateMachine = StateMachine<TrafficLightTransition>(initialState: .red)
+let stateMachine = StateMachine<TrafficLightTransition>(
+    initialState: .red,
+    loggingConfig: StateMachineLoggingConfig(logLevel: .standard)
+)
 
 /// Helper function to process state transitions and print their effects
 @MainActor func processTransition(to newState: TrafficLightState) {
@@ -76,4 +112,21 @@ processTransition(to: .red)    // Yellow -> Red
 // Demonstrate invalid transition handling
 processTransition(to: .green)  // Red -> Green (valid)
 processTransition(to: .red)    // Green -> Red (invalid, should not print)
+
+// Generate and print visualizations in different formats
+print("\nMermaid Visualization:")
+print(stateMachine.generateVisualization(config: StateMachineVisualizationConfig(format: .mermaid)))
+
+print("\nDOT Visualization:")
+print(stateMachine.generateVisualization(config: StateMachineVisualizationConfig(format: .dot)))
+
+print("\nPlantUML Visualization:")
+print(stateMachine.generateVisualization(config: StateMachineVisualizationConfig(format: .plantUML)))
+
+// Generate visualization without history
+print("\nMermaid Visualization (without history):")
+print(stateMachine.generateVisualization(config: StateMachineVisualizationConfig(
+    format: .mermaid,
+    includeHistory: false
+)))
 

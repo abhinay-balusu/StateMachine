@@ -106,6 +106,53 @@ public protocol TransitionType {
     func isValid(from currentState: State) -> Bool
 }
 
+/// Protocol for types that can be visualized in a state machine diagram
+public protocol StateMachineVisualizable {
+    /// Returns a string representation of the state for visualization
+    var visualName: String { get }
+    
+    /// Returns a color representation of the state (optional)
+    var visualColor: String? { get }
+}
+
+/// Protocol for transitions that can be visualized
+public protocol TransitionVisualizable {
+    /// Returns a string representation of the transition for visualization
+    var visualName: String { get }
+
+    /// Returns a color representation of the transition (optional)
+    var visualColor: String? { get }
+}
+
+/// Configuration for state machine visualization
+public struct StateMachineVisualizationConfig {
+    /// The format to generate the visualization in
+    public enum Format {
+        case mermaid
+        case dot
+        case plantUML
+    }
+
+    /// The visualization format
+    public let format: Format
+
+    /// Whether to include effects in the visualization
+    public let includeEffects: Bool
+
+    /// Whether to include state history in the visualization
+    public let includeHistory: Bool
+
+    public init(
+        format: Format = .mermaid,
+        includeEffects: Bool = true,
+        includeHistory: Bool = true
+    ) {
+        self.format = format
+        self.includeEffects = includeEffects
+        self.includeHistory = includeHistory
+    }
+}
+
 /// A generic state machine implementation that manages state transitions and effects.
 /// The state machine ensures that only valid transitions are processed and maintains
 /// the current state of the system.
@@ -222,6 +269,89 @@ public final class StateMachine<T: TransitionType> {
             history.append(state)
             stateHistory = history
         }
+    }
+
+    /// Generates a visualization of the state machine
+    /// - Parameter config: The visualization configuration
+    /// - Returns: A string containing the visualization in the specified format
+    public func generateVisualization(config: StateMachineVisualizationConfig = StateMachineVisualizationConfig()) -> String {
+        switch config.format {
+        case .mermaid:
+            return generateMermaidVisualization(config: config)
+        case .dot:
+            return generateDotVisualization(config: config)
+        case .plantUML:
+            return generatePlantUMLVisualization(config: config)
+        }
+    }
+
+    private func generateMermaidVisualization(config: StateMachineVisualizationConfig) -> String {
+        var diagram = "graph TD\n"
+
+        // Add current state
+        let currentState = String(describing: currentState)
+        diagram += "    Current[\"Current: \(currentState)\"]\n"
+
+        // Add state history if enabled
+        if config.includeHistory, let history = stateHistory {
+            diagram += "    subgraph History\n"
+            for (index, state) in history.enumerated() {
+                diagram += "        H\(index)[\"\(String(describing: state))\"]\n"
+                if index > 0 {
+                    diagram += "        H\(index-1) --> H\(index)\n"
+                }
+            }
+            diagram += "    end\n"
+        }
+
+        return diagram
+    }
+
+    private func generateDotVisualization(config: StateMachineVisualizationConfig) -> String {
+        var diagram = "digraph StateMachine {\n"
+
+        // Add current state
+        let currentState = String(describing: currentState)
+        diagram += "    Current [label=\"Current: \(currentState)\"]\n"
+
+        // Add state history if enabled
+        if config.includeHistory, let history = stateHistory {
+            diagram += "    subgraph cluster_history {\n"
+            diagram += "        label=\"History\"\n"
+            for (index, state) in history.enumerated() {
+                diagram += "        H\(index) [label=\"\(String(describing: state))\"]\n"
+                if index > 0 {
+                    diagram += "        H\(index-1) -> H\(index)\n"
+                }
+            }
+            diagram += "    }\n"
+        }
+
+        diagram += "}\n"
+        return diagram
+    }
+
+    private func generatePlantUMLVisualization(config: StateMachineVisualizationConfig) -> String {
+        var diagram = "@startuml\n"
+
+        // Add current state
+        let currentState = String(describing: currentState)
+        diagram += "state \"Current: \(currentState)\" as Current\n"
+
+        // Add state history if enabled
+        if config.includeHistory, let history = stateHistory {
+            diagram += "state \"History\" as History {\n"
+            for (index, state) in history.enumerated() {
+                diagram += "    state \"\(String(describing: state))\" as H\(index)\n"
+                if index > 0 {
+                    diagram += "    H\(index-1) --> H\(index)\n"
+                }
+            }
+            diagram += "}\n"
+        }
+
+        diagram += "@enduml\n"
+        return diagram
     }
 }
 
