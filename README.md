@@ -1,18 +1,16 @@
 # StateMachine
 
-A lightweight, type-safe state machine implementation in Swift. This package provides a generic state machine that can be used to model any system with discrete states and transitions.
+A Swift package that provides a robust and flexible state machine implementation with support for state transitions, effects, logging, persistence, and visualization.
 
 ## Features
 
-- Type-safe state and effect handling
-- Generic implementation that works with any state type
-- Support for transition validation
-- Effect processing during state transitions
-- Thread-safe state management with `ThreadSafeStateMachine`
-- State persistence with `StateMachinePersistable`
-- Comprehensive logging and debugging support
-- State history tracking
-- Custom log handlers
+- **State Management**: Define and manage states with type-safe transitions
+- **Effect Handling**: Process side effects during state transitions
+- **Validation**: Ensure only valid state transitions are allowed
+- **Logging**: Configurable logging levels and custom log handlers
+- **Persistence**: Save and restore state machine state
+- **Thread Safety**: Thread-safe operations with async/await support
+- **Visualization**: Generate state machine diagrams in multiple formats (Mermaid, DOT, PlantUML)
 
 ## Installation
 
@@ -26,162 +24,175 @@ dependencies: [
 ]
 ```
 
+Or add it directly in Xcode:
+1. File > Add Packages...
+2. Enter the repository URL
+3. Select the version rule
+4. Click Add Package
+
 ## Usage
 
-### Basic Example
+### Basic Usage
 
 ```swift
 // Define your states
-enum MyState: StateMachinePersistable {
-    case idle
-    case processing
-    case completed
+enum TrafficLightState: StateMachineVisualizable {
+    case red
+    case yellow
+    case green
     
-    var persistenceKey: String {
+    var visualName: String {
         switch self {
-        case .idle: return "idle"
-        case .processing: return "processing"
-        case .completed: return "completed"
+        case .red: return "Red Light"
+        case .yellow: return "Yellow Light"
+        case .green: return "Green Light"
+        }
+    }
+    
+    var visualColor: String? {
+        switch self {
+        case .red: return "#FF0000"
+        case .yellow: return "#FFFF00"
+        case .green: return "#00FF00"
         }
     }
 }
 
 // Define your effects
-enum MyEffect {
-    case log(String)
+enum TrafficLightEffect {
+    case printTransition(String)
 }
 
-// Create a transition type
-struct MyTransition: TransitionType {
-    typealias State = MyState
-    typealias Effect = MyEffect
+// Implement your transition type
+struct TrafficLightTransition: TransitionType, TransitionVisualizable {
+    typealias State = TrafficLightState
+    typealias Effect = TrafficLightEffect
     
-    let state: MyState
-    let effect: MyEffect
+    let state: TrafficLightState
+    let effect: TrafficLightEffect
     
-    func process(from currentState: MyState) -> [MyEffect] {
-        return [effect]
+    var visualName: String {
+        switch state {
+        case .red: return "Stop → Go"
+        case .yellow: return "Caution"
+        case .green: return "Go → Stop"
+        }
     }
     
-    func isValid(from currentState: MyState) -> Bool {
-        // Define your transition rules here
-        return true
+    var visualColor: String? {
+        switch state {
+        case .red: return "#FF0000"
+        case .yellow: return "#FFFF00"
+        case .green: return "#00FF00"
+        }
+    }
+    
+    func process(from currentState: TrafficLightState) -> [TrafficLightEffect] {
+        let transitionMessage = "Transitioning from \(currentState) to \(state)"
+        return [.printTransition(transitionMessage)]
+    }
+    
+    func isValid(from currentState: TrafficLightState) -> Bool {
+        switch (currentState, state) {
+        case (.red, .green),
+             (.green, .yellow),
+             (.yellow, .red):
+            return true
+        default:
+            return false
+        }
     }
 }
 
 // Create and use the state machine
-let stateMachine = ThreadSafeStateMachine<MyTransition>(initialState: .idle)
+let stateMachine = StateMachine<TrafficLightTransition>(
+    initialState: .red,
+    loggingConfig: StateMachineLoggingConfig(logLevel: .standard)
+)
 
 // Process transitions
-Task {
-    let effects = try await stateMachine.process(MyTransition(
-        state: .processing,
-        effect: .log("Starting processing")
-    ))
-    
-    // Handle effects
-    for effect in effects {
-        if case .log(let message) = effect {
-            print(message)
-        }
-    }
-}
+let transition = TrafficLightTransition(state: .green, effect: .printTransition(""))
+let effects = try stateMachine.process(transition)
 ```
 
 ### Thread Safety
 
-The package provides two implementations:
-
-1. `StateMachine`: Basic implementation without thread safety
-2. `ThreadSafeStateMachine`: Thread-safe wrapper using a serial queue
+For thread-safe operations, use the `ThreadSafeStateMachine` class:
 
 ```swift
-// Thread-safe usage
-let stateMachine = ThreadSafeStateMachine<MyTransition>(
-    initialState: .idle,
-    category: "myStateMachine"
+let threadSafeMachine = ThreadSafeStateMachine<TrafficLightTransition>(
+    initialState: .red
 )
 
-// All operations are automatically queued
-Task {
-    let state = await stateMachine.getCurrentState()
-    let effects = try await stateMachine.process(transition)
-}
+// Use async/await for thread-safe operations
+let effects = try await threadSafeMachine.process(transition)
+let currentState = await threadSafeMachine.getCurrentState()
 ```
 
 ### State Persistence
 
-States can be persisted using the `StateMachinePersistable` protocol:
+To persist state machine state:
 
 ```swift
-enum MyState: StateMachinePersistable {
-    case idle
-    case processing
-    case completed
-    
-    var persistenceKey: String {
-        switch self {
-        case .idle: return "idle"
-        case .processing: return "processing"
-        case .completed: return "completed"
-        }
-    }
+// Make your state conform to StateMachinePersistable
+extension TrafficLightState: StateMachinePersistable {
+    var persistenceKey: String { "trafficLight" }
 }
 
 // Configure persistence
-let stateMachine = StateMachine<MyTransition>(
-    initialState: .idle,
-    loggingConfig: StateMachineLoggingConfig(
-        logLevel: .standard,
-        persistenceConfig: StateMachinePersistenceConfig()
-    )
+let config = StateMachineLoggingConfig(
+    logLevel: .standard,
+    persistenceConfig: StateMachinePersistenceConfig()
 )
 
-// Save state
+// Save and load state
 try stateMachine.persistState()
-
-// Load state
 try stateMachine.loadPersistedState()
 ```
 
-### Logging and Debugging
+### Visualization
 
-The state machine provides comprehensive logging support:
+Generate state machine diagrams in multiple formats:
 
 ```swift
-let stateMachine = StateMachine<MyTransition>(
-    initialState: .idle,
-    loggingConfig: StateMachineLoggingConfig(
-        logLevel: .verbose,
-        logHandler: { message in
-            // Custom logging
-            print("[Custom] \(message)")
-        }
-    )
+// Generate Mermaid diagram
+let mermaidDiagram = stateMachine.generateVisualization(
+    config: StateMachineVisualizationConfig(format: .mermaid)
 )
+
+// Generate DOT diagram
+let dotDiagram = stateMachine.generateVisualization(
+    config: StateMachineVisualizationConfig(format: .dot)
+)
+
+// Generate PlantUML diagram
+let plantUMLDiagram = stateMachine.generateVisualization(
+    config: StateMachineVisualizationConfig(format: .plantUML)
+)
+
+// Customize visualization
+let customConfig = StateMachineVisualizationConfig(
+    format: .mermaid,
+    includeEffects: false,
+    includeHistory: true
+)
+let customDiagram = stateMachine.generateVisualization(config: customConfig)
 ```
 
-## Testing
+You can visualize these diagrams using:
+- [Mermaid Live Editor](https://mermaid.live)
+- [Graphviz Online](https://dreampuf.github.io/GraphvizOnline/)
+- [PlantUML Online Server](http://www.plantuml.com/plantuml/uml/)
 
-The package includes comprehensive unit tests that verify:
-- Initial state setting
-- Valid transitions
-- Invalid transitions
-- Effect processing
-- Multiple transitions in sequence
-- Thread safety
-- State persistence
-- Logging functionality
+## Example
 
-Run the tests using:
-```bash
-swift test
-```
+Check out the `TrafficLight.playground` for a complete example of a traffic light state machine with visualization support.
 
 ## Requirements
 
-- Swift 5.9+
 - iOS 13.0+ / macOS 10.15+
+- Swift 5.5+
+- Xcode 13.0+
 
 ## License
 
@@ -190,11 +201,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Roadmap
-
-- [ ] Add state machine visualization tools
-- [ ] Add support for state transition hooks/callbacks
-- [ ] Add performance benchmarks
-- [ ] Add more real-world examples
-- [ ] Add state machine debugging tools
