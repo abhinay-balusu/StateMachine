@@ -8,7 +8,11 @@ A lightweight, type-safe state machine implementation in Swift. This package pro
 - Generic implementation that works with any state type
 - Support for transition validation
 - Effect processing during state transitions
-- Thread-safe state management
+- Thread-safe state management with `ThreadSafeStateMachine`
+- State persistence with `StateMachinePersistable`
+- Comprehensive logging and debugging support
+- State history tracking
+- Custom log handlers
 
 ## Installation
 
@@ -28,10 +32,18 @@ dependencies: [
 
 ```swift
 // Define your states
-enum MyState {
+enum MyState: StateMachinePersistable {
     case idle
     case processing
     case completed
+    
+    var persistenceKey: String {
+        switch self {
+        case .idle: return "idle"
+        case .processing: return "processing"
+        case .completed: return "completed"
+        }
+    }
 }
 
 // Define your effects
@@ -58,81 +70,95 @@ struct MyTransition: TransitionType {
 }
 
 // Create and use the state machine
-let stateMachine = StateMachine<MyTransition>(initialState: .idle)
+let stateMachine = ThreadSafeStateMachine<MyTransition>(initialState: .idle)
+
+// Process transitions
+Task {
+    let effects = try await stateMachine.process(MyTransition(
+        state: .processing,
+        effect: .log("Starting processing")
+    ))
+    
+    // Handle effects
+    for effect in effects {
+        if case .log(let message) = effect {
+            print(message)
+        }
+    }
+}
 ```
 
-#### Basic Example State Machine
+### Thread Safety
 
-```
-    [Start]
-       |
-       v
-    +-------+
-    | Idle  |----->[Process]----+
-    +-------+                    |
-                                v
-                           +-------------+
-                           | Processing  |
-                           +-------------+
-                                |
-                                | [Finish]
-                                v
-                           +------------+
-                           | Completed  |
-                           +------------+
-                                |
-                                | [Reset]
-                                v
-                           +-------+
-                           | Idle  |
-                           +-------+
-```
+The package provides two implementations:
 
-### Traffic Light Example
-
-The package includes a traffic light example that demonstrates a practical use case:
+1. `StateMachine`: Basic implementation without thread safety
+2. `ThreadSafeStateMachine`: Thread-safe wrapper using a serial queue
 
 ```swift
-enum TrafficLightState {
-    case red
-    case yellow
-    case green
-}
+// Thread-safe usage
+let stateMachine = ThreadSafeStateMachine<MyTransition>(
+    initialState: .idle,
+    category: "myStateMachine"
+)
 
-enum TrafficLightEffect {
-    case printTransition(String)
-}
-
-struct TrafficLightTransition: TransitionType {
-    // ... implementation details ...
+// All operations are automatically queued
+Task {
+    let state = await stateMachine.getCurrentState()
+    let effects = try await stateMachine.process(transition)
 }
 ```
 
-#### Traffic Light State Machine
+### State Persistence
 
+States can be persisted using the `StateMachinePersistable` protocol:
+
+```swift
+enum MyState: StateMachinePersistable {
+    case idle
+    case processing
+    case completed
+    
+    var persistenceKey: String {
+        switch self {
+        case .idle: return "idle"
+        case .processing: return "processing"
+        case .completed: return "completed"
+        }
+    }
+}
+
+// Configure persistence
+let stateMachine = StateMachine<MyTransition>(
+    initialState: .idle,
+    loggingConfig: StateMachineLoggingConfig(
+        logLevel: .standard,
+        persistenceConfig: StateMachinePersistenceConfig()
+    )
+)
+
+// Save state
+try stateMachine.persistState()
+
+// Load state
+try stateMachine.loadPersistedState()
 ```
-    [Stop]
-       |
-       v
-    +-------+
-    |  Red  |----->[Go]----+
-    +-------+              |
-                          v
-                     +---------+
-                     |  Green  |
-                     +---------+
-                          |
-                          | [Caution]
-                          v
-                     +---------+
-                     | Yellow  |
-                     +---------+
-                          |
-                          | [Stop]
-                          v
-                     +-------+
-                     |  Red  |
-                     +-------+
+
+### Logging and Debugging
+
+The state machine provides comprehensive logging support:
+
+```swift
+let stateMachine = StateMachine<MyTransition>(
+    initialState: .idle,
+    loggingConfig: StateMachineLoggingConfig(
+        logLevel: .verbose,
+        logHandler: { message in
+            // Custom logging
+            print("[Custom] \(message)")
+        }
+    )
+)
 ```
 
 ## Testing
@@ -143,6 +169,9 @@ The package includes comprehensive unit tests that verify:
 - Invalid transitions
 - Effect processing
 - Multiple transitions in sequence
+- Thread safety
+- State persistence
+- Logging functionality
 
 Run the tests using:
 ```bash
@@ -161,3 +190,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Roadmap
+
+- [ ] Add state machine visualization tools
+- [ ] Add support for state transition hooks/callbacks
+- [ ] Add performance benchmarks
+- [ ] Add more real-world examples
+- [ ] Add state machine debugging tools

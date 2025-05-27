@@ -29,6 +29,9 @@ public struct StateMachineLoggingConfig {
     /// Custom log handler for state machine events
     public let logHandler: ((String) -> Void)?
     
+    /// Configuration for state persistence
+    public let persistenceConfig: StateMachinePersistenceConfig?
+    
     /// Default history size for each log level
     public static func historySize(for level: StateMachineLogLevel) -> Int {
         switch level {
@@ -41,10 +44,35 @@ public struct StateMachineLoggingConfig {
     
     public init(
         logLevel: StateMachineLogLevel = .minimal,
-        logHandler: ((String) -> Void)? = nil
+        logHandler: ((String) -> Void)? = nil,
+        persistenceConfig: StateMachinePersistenceConfig? = nil
     ) {
         self.logLevel = logLevel
         self.logHandler = logHandler
+        self.persistenceConfig = persistenceConfig
+    }
+}
+
+/// Protocol for types that can be persisted
+public protocol StateMachinePersistable: Codable {
+    /// Unique identifier for the state
+    var persistenceKey: String { get }
+}
+
+/// Configuration for state persistence
+public struct StateMachinePersistenceConfig {
+    /// The UserDefaults suite to use for persistence
+    public let defaults: UserDefaults
+    
+    /// The key prefix for persisted states
+    public let keyPrefix: String
+    
+    public init(
+        defaults: UserDefaults = .standard,
+        keyPrefix: String = "com.statemachine"
+    ) {
+        self.defaults = defaults
+        self.keyPrefix = keyPrefix
     }
 }
 
@@ -193,6 +221,111 @@ public final class StateMachine<T: TransitionType> {
             }
             history.append(state)
             stateHistory = history
+        }
+    }
+}
+
+/// A thread-safe wrapper for the state machine that ensures all operations are performed on a serial queue
+public final class ThreadSafeStateMachine<T: TransitionType> {
+    private let stateMachine: StateMachine<T>
+    private let queue: DispatchQueue
+    
+    public init(
+        initialState: T.State,
+        category: String = "default",
+        loggingConfig: StateMachineLoggingConfig = StateMachineLoggingConfig(),
+        queue: DispatchQueue? = nil
+    ) {
+        self.stateMachine = StateMachine(
+            initialState: initialState,
+            category: category,
+            loggingConfig: loggingConfig
+        )
+        self.queue = queue ?? DispatchQueue(
+            label: "com.statemachine.\(category)",
+            qos: .userInitiated
+        )
+    }
+    
+    public func process(_ transition: T) async throws -> [T.Effect] {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                do {
+                    let effects = try self.stateMachine.process(transition)
+                    continuation.resume(returning: effects)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    public func getCurrentState() async -> T.State {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                continuation.resume(returning: self.stateMachine.getCurrentState())
+            }
+        }
+    }
+    
+    public func getStateHistory() async -> [T.State]? {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                continuation.resume(returning: self.stateMachine.getStateHistory())
+            }
+        }
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+extension StateMachine where T.State: StateMachinePersistable {
+    /// Saves the current state to persistent storage
+    public func persistState() throws {
+        guard let config = loggingConfig.persistenceConfig else { return }
+        let data = try JSONEncoder().encode(currentState)
+        let key = "\(config.keyPrefix).\(currentState.persistenceKey)"
+        config.defaults.set(data, forKey: key)
+    }
+    
+    /// Loads the state from persistent storage
+    public func loadPersistedState() throws {
+        guard let config = loggingConfig.persistenceConfig else { return }
+        let key = "\(config.keyPrefix).\(currentState.persistenceKey)"
+        guard let data = config.defaults.data(forKey: key) else {
+            return
+        }
+        currentState = try JSONDecoder().decode(T.State.self, from: data)
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+extension ThreadSafeStateMachine {
+    public func process(_ transition: T) async throws -> [T.Effect] {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                do {
+                    let effects = try self.stateMachine.process(transition)
+                    continuation.resume(returning: effects)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+    
+    public func getCurrentState() async -> T.State {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                continuation.resume(returning: self.stateMachine.getCurrentState())
+            }
+        }
+    }
+    
+    public func getStateHistory() async -> [T.State]? {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                continuation.resume(returning: self.stateMachine.getStateHistory())
+            }
         }
     }
 }
