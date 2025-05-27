@@ -8,7 +8,7 @@
 import Foundation
 
 /// Represents an error that can occur during state machine operations
-public enum StateMachineError: Error, Sendable {
+public enum StateMachineError: Error {
     /// Attempted an invalid transition
     case invalidTransition(from: String, to: String)
 }
@@ -25,13 +25,13 @@ public enum StateMachineLogLevel {
 public struct StateMachineLoggingConfig {
     /// The level of logging detail
     public let logLevel: StateMachineLogLevel
-    
+
     /// Custom log handler for state machine events
     public let logHandler: ((String) -> Void)?
-    
+
     /// Configuration for state persistence
     public let persistenceConfig: StateMachinePersistenceConfig?
-    
+
     /// Default history size for each log level
     public static func historySize(for level: StateMachineLogLevel) -> Int {
         switch level {
@@ -41,7 +41,7 @@ public struct StateMachineLoggingConfig {
             return 100
         }
     }
-    
+
     public init(
         logLevel: StateMachineLogLevel = .minimal,
         logHandler: ((String) -> Void)? = nil,
@@ -63,10 +63,10 @@ public protocol StateMachinePersistable: Codable {
 public struct StateMachinePersistenceConfig {
     /// The UserDefaults suite to use for persistence
     public let defaults: UserDefaults
-    
+
     /// The key prefix for persisted states
     public let keyPrefix: String
-    
+
     public init(
         defaults: UserDefaults = .standard,
         keyPrefix: String = "com.statemachine"
@@ -85,13 +85,13 @@ public struct StateMachinePersistenceConfig {
 public protocol TransitionType {
     /// The type representing the state in the state machine
     associatedtype State
-    
+
     /// The type representing the effects that can be produced during transitions
     associatedtype Effect
 
     /// The target state for this transition
     var state: State { get }
-    
+
     /// The effect associated with this transition
     var effect: Effect { get }
 
@@ -99,7 +99,7 @@ public protocol TransitionType {
     /// - Parameter currentState: The current state before the transition
     /// - Returns: An array of effects that should be applied as a result of this transition
     func process(from currentState: State) -> [Effect]
-    
+
     /// Validates whether this transition is allowed from the current state
     /// - Parameter currentState: The current state to validate the transition from
     /// - Returns: True if the transition is valid, false otherwise
@@ -118,13 +118,13 @@ public protocol TransitionType {
 public final class StateMachine<T: TransitionType> {
     /// The current state of the state machine
     private var currentState: T.State
-    
+
     /// Logging configuration
     private let loggingConfig: StateMachineLoggingConfig
-    
+
     /// Category of the state machine
     private let category: String
-    
+
     /// Default log handler that prints to console
     private let defaultLogHandler: (String) -> Void = { print("[StateMachine] \($0)") }
     
@@ -144,7 +144,7 @@ public final class StateMachine<T: TransitionType> {
         self.currentState = initialState
         self.category = category
         self.loggingConfig = loggingConfig
-        
+
         if loggingConfig.logLevel != .none {
             stateHistory = [initialState]
             log("Initial state: \(initialState)")
@@ -157,11 +157,11 @@ public final class StateMachine<T: TransitionType> {
     /// - Throws: StateMachineError if the transition is invalid
     public func process(_ transition: T) throws -> [T.Effect] {
         let isValid = transition.isValid(from: currentState)
-        
+
         if loggingConfig.logLevel == .standard || loggingConfig.logLevel == .verbose {
             log("Validating transition: \(currentState) → \(transition.state)")
         }
-        
+
         guard isValid else {
             if loggingConfig.logLevel == .standard || loggingConfig.logLevel == .verbose {
                 log("Invalid transition: \(currentState) → \(transition.state)")
@@ -173,11 +173,11 @@ public final class StateMachine<T: TransitionType> {
         }
 
         let effects = transition.process(from: currentState)
-        
+
         if loggingConfig.logLevel != .none {
             log("\(currentState) → \(transition.state)")
         }
-        
+
         if loggingConfig.logLevel == .verbose {
             log("Effects produced: \(effects.count)")
         }
@@ -195,14 +195,14 @@ public final class StateMachine<T: TransitionType> {
     public func getCurrentState() -> T.State {
         currentState
     }
-    
+
     /// Returns the state history if logging is enabled
     /// - Returns: Array of previous states, or nil if logging is disabled
     public func getStateHistory() -> [T.State]? {
         guard loggingConfig.logLevel != .none else { return nil }
         return stateHistory
     }
-    
+
     /// Internal logging function that uses either the custom log handler or default
     private func log(_ message: String) {
         let formattedMessage = "[\(category)] \(message)"
@@ -212,7 +212,7 @@ public final class StateMachine<T: TransitionType> {
             defaultLogHandler(formattedMessage)
         }
     }
-    
+
     private func appendToHistory(_ state: T.State) {
         if var history = stateHistory {
             let maxSize = StateMachineLoggingConfig.historySize(for: loggingConfig.logLevel)
@@ -226,10 +226,11 @@ public final class StateMachine<T: TransitionType> {
 }
 
 /// A thread-safe wrapper for the state machine that ensures all operations are performed on a serial queue
+@available(macOS 10.15, iOS 13.0, *)
 public final class ThreadSafeStateMachine<T: TransitionType> {
     private let stateMachine: StateMachine<T>
     private let queue: DispatchQueue
-    
+
     public init(
         initialState: T.State,
         category: String = "default",
@@ -246,7 +247,7 @@ public final class ThreadSafeStateMachine<T: TransitionType> {
             qos: .userInitiated
         )
     }
-    
+
     public func process(_ transition: T) async throws -> [T.Effect] {
         try await withCheckedThrowingContinuation { continuation in
             queue.async {
@@ -259,7 +260,7 @@ public final class ThreadSafeStateMachine<T: TransitionType> {
             }
         }
     }
-    
+
     public func getCurrentState() async -> T.State {
         await withCheckedContinuation { continuation in
             queue.async {
@@ -267,7 +268,7 @@ public final class ThreadSafeStateMachine<T: TransitionType> {
             }
         }
     }
-    
+
     public func getStateHistory() async -> [T.State]? {
         await withCheckedContinuation { continuation in
             queue.async {
@@ -286,7 +287,7 @@ extension StateMachine where T.State: StateMachinePersistable {
         let key = "\(config.keyPrefix).\(currentState.persistenceKey)"
         config.defaults.set(data, forKey: key)
     }
-    
+
     /// Loads the state from persistent storage
     public func loadPersistedState() throws {
         guard let config = loggingConfig.persistenceConfig else { return }
@@ -295,37 +296,5 @@ extension StateMachine where T.State: StateMachinePersistable {
             return
         }
         currentState = try JSONDecoder().decode(T.State.self, from: data)
-    }
-}
-
-@available(macOS 10.15, iOS 13.0, *)
-extension ThreadSafeStateMachine {
-    public func process(_ transition: T) async throws -> [T.Effect] {
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                do {
-                    let effects = try self.stateMachine.process(transition)
-                    continuation.resume(returning: effects)
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
-    }
-    
-    public func getCurrentState() async -> T.State {
-        await withCheckedContinuation { continuation in
-            queue.async {
-                continuation.resume(returning: self.stateMachine.getCurrentState())
-            }
-        }
-    }
-    
-    public func getStateHistory() async -> [T.State]? {
-        await withCheckedContinuation { continuation in
-            queue.async {
-                continuation.resume(returning: self.stateMachine.getStateHistory())
-            }
-        }
     }
 }
