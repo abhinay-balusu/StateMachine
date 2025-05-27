@@ -4,6 +4,10 @@ import PackageDescription
 
 let package = Package(
     name: "StateMachine",
+    platforms: [
+        .iOS(.v13),
+        .macOS(.v10_15)
+    ],
     products: [
         .library(
             name: "StateMachine",
@@ -16,5 +20,6 @@ let package = Package(
             name: "StateMachineTests",
             dependencies: ["StateMachine"]
         ),
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )
