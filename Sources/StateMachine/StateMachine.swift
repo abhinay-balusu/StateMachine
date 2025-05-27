@@ -34,9 +34,7 @@ public struct StateMachineLoggingConfig {
         switch level {
         case .none:
             return 0
-        case .minimal:
-            return 10
-        case .standard, .verbose:
+        case .minimal, .standard, .verbose:
             return 100
         }
     }
@@ -119,9 +117,8 @@ public final class StateMachine<T: TransitionType> {
         self.category = category
         self.loggingConfig = loggingConfig
         
-        // Initialize history if logging is enabled
         if loggingConfig.logLevel != .none {
-            self.stateHistory = [initialState]
+            stateHistory = [initialState]
             log("Initial state: \(initialState)")
         }
     }
@@ -131,7 +128,6 @@ public final class StateMachine<T: TransitionType> {
     /// - Returns: An array of effects that should be applied
     /// - Throws: StateMachineError if the transition is invalid
     public func process(_ transition: T) throws -> [T.Effect] {
-        // Check if the transition is valid
         let isValid = transition.isValid(from: currentState)
         
         if loggingConfig.logLevel == .standard || loggingConfig.logLevel == .verbose {
@@ -148,7 +144,6 @@ public final class StateMachine<T: TransitionType> {
             )
         }
 
-        // Get the effects from the transition
         let effects = transition.process(from: currentState)
         
         if loggingConfig.logLevel != .none {
@@ -159,20 +154,11 @@ public final class StateMachine<T: TransitionType> {
             log("Effects produced: \(effects.count)")
         }
 
-        // Update state history if logging is enabled
-        if var history = stateHistory {
-            let maxSize = StateMachineLoggingConfig.historySize(for: loggingConfig.logLevel)
-            if history.count >= maxSize {
-                // Remove oldest state when at capacity
-                history.removeFirst()
-            }
-            history.append(transition.state)
-            stateHistory = history
+        if loggingConfig.logLevel != .none {
+            appendToHistory(transition.state)
         }
 
-        // Always update the state for valid transitions
         currentState = transition.state
-
         return effects
     }
 
@@ -185,7 +171,8 @@ public final class StateMachine<T: TransitionType> {
     /// Returns the state history if logging is enabled
     /// - Returns: Array of previous states, or nil if logging is disabled
     public func getStateHistory() -> [T.State]? {
-        stateHistory
+        guard loggingConfig.logLevel != .none else { return nil }
+        return stateHistory
     }
     
     /// Internal logging function that uses either the custom log handler or default
@@ -195,6 +182,17 @@ public final class StateMachine<T: TransitionType> {
             customHandler(formattedMessage)
         } else {
             defaultLogHandler(formattedMessage)
+        }
+    }
+    
+    private func appendToHistory(_ state: T.State) {
+        if var history = stateHistory {
+            let maxSize = StateMachineLoggingConfig.historySize(for: loggingConfig.logLevel)
+            if history.count >= maxSize {
+                history.removeFirst()
+            }
+            history.append(state)
+            stateHistory = history
         }
     }
 }

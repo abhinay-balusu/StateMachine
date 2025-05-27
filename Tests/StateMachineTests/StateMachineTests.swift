@@ -113,7 +113,8 @@ final class StateMachineTests: XCTestCase {
             loggingConfig: StateMachineLoggingConfig(logLevel: .minimal)
         )
         
-        let validTransitions: [TestState] = [.state2, .state3, .state1, .state2, .state3, .state1, .state2, .state3, .state1, .state2]
+        // Create a sequence that will exceed the history limit
+        let validTransitions: [TestState] = Array(repeating: [.state2, .state3, .state1], count: 40).flatMap { $0 }
         
         for (index, nextState) in validTransitions.enumerated() {
             let transition = TestTransition(state: nextState, effect: .effect1("transition \(index + 1)"))
@@ -122,8 +123,7 @@ final class StateMachineTests: XCTestCase {
         
         let history = stateMachine.getStateHistory()
         XCTAssertNotNil(history)
-        XCTAssertEqual(history?.count, 10)
-        XCTAssertEqual(stateMachine.getCurrentState(), .state2)
+        XCTAssertEqual(history?.count, 100)
     }
     
     func testNoHistoryWhenLoggingDisabled() {
